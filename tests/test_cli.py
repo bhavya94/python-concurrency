@@ -15,3 +15,9 @@ def test_an_unknown_option_is_an_error():
     result = subprocess.run([PDSAU, "--bogus"], capture_output=True, text=True)
     assert result.returncode == 2
     assert "unrecognized arguments: --bogus" in result.stderr
+
+
+def test_a_count_below_one_is_an_error():
+    result = subprocess.run([PDSAU, "waits", "--n", "0"], capture_output=True, text=True)
+    assert result.returncode == 2
+    assert "must be 1 or more, not 0" in result.stderr
