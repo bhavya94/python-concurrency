@@ -55,3 +55,12 @@ def test_each_worker_process_logs_and_runs_its_items():
     rows = [line.split()[0] for line in result.stdout.splitlines() if "|" in line]
     assert rows and all(row.startswith("SpawnProcess-") for row in rows)
     assert "SpawnProcess-" in result.stderr  # the setup gave each worker process the parent's logging
+
+
+def test_asyncio_way_runs_one_task_per_request_and_overlaps_them():
+    result = subprocess.run([PDSAU, "waits", "--way", "asyncio", "--n", "3", "--workers", "3", "--wait-ms", "100"],
+                            capture_output=True, text=True)
+    rows = sorted(line.split()[0] for line in result.stdout.splitlines() if "|" in line)
+    assert rows == ["item-0", "item-1", "item-2"]
+    measured = int(re.search(r"one thread: (\d+) ms", result.stdout).group(1))
+    assert measured < 200  # one round of 100 ms; one at a time would take 300

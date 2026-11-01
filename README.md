@@ -103,6 +103,55 @@ model: ⌈n/N⌉ × t = ⌈4/2⌉ × 200 = 2 × 200 = 400 ms
   from run to run.
 - So the total is about ⌈n / N⌉ × t: 2 rounds of 200 ms, not 4. `--workers 64 --n 64` takes one round.
 
+## Waiting, with asyncio: one thread, many tasks
+
+`--way asyncio` sends the requests as asyncio tasks, all on one thread. At each `await`, a task pauses, and the
+event loop, asyncio's scheduler, runs another task until the socket is ready. `--workers` is then the number
+of requests in flight.
+
+```console
+$ uv run pdsau waits --way asyncio --n 4 --workers 2
+  141.6ms  MainThread  None    slow server on port 64188; every answer waits 200 ms
+  141.7ms  MainThread  None    threads running: MainThread, server
+  142.4ms  server      None    connection accepted; starting a new thread to handle it
+  142.4ms  MainThread  item-0  item 0: request sent; this task now waits, and the loop runs the others
+  142.6ms  handler-0   None    received /item/0; sleeping 200 ms
+  142.7ms  MainThread  item-1  item 1: request sent; this task now waits, and the loop runs the others
+  142.7ms  server      None    connection accepted; starting a new thread to handle it
+  142.8ms  handler-1   None    received /item/1; sleeping 200 ms
+  347.9ms  handler-0   None    answering /item/0
+  348.1ms  handler-1   None    answering /item/1
+  350.7ms  MainThread  item-0  item 0: answered after 209 ms
+  351.2ms  MainThread  item-1  item 1: answered after 209 ms
+  351.3ms  server      None    connection accepted; starting a new thread to handle it
+  352.0ms  server      None    connection accepted; starting a new thread to handle it
+  352.0ms  MainThread  item-2  item 2: request sent; this task now waits, and the loop runs the others
+  352.2ms  handler-2   None    received /item/2; sleeping 200 ms
+  352.7ms  handler-3   None    received /item/3; sleeping 200 ms
+  352.6ms  MainThread  item-3  item 3: request sent; this task now waits, and the loop runs the others
+  553.3ms  handler-3   None    answering /item/3
+  554.1ms  MainThread  item-3  item 3: answered after 203 ms
+  554.2ms  handler-2   None    answering /item/2
+  554.7ms  MainThread  item-2  item 2: answered after 204 ms
+
+item-0  |000000000000000000000000000000······························|
+item-1  |111111111111111111111111111111······························|
+item-2  |······························22222222222222222222222222222·|
+item-3  |······························33333333333333333333333333333·|
+         0 ms                                                  413 ms
+
+4 requests, asyncio, 2 tasks in flight, one thread: 413 ms
+model: ⌈n/N⌉ × t = ⌈4/2⌉ × 200 = 2 × 200 = 400 ms
+```
+
+- With asyncio, the log gains a column for the task. Every request runs on `MainThread`, each in its own task,
+  `item-0` to `item-3`. Lines from the server's threads show `None`: no task runs there.
+- Tasks 0 and 1 send their requests within a millisecond, on the same thread. Both wait at the same time, because an
+  `await` hands the thread back to the event loop.
+- A semaphore, a counter of free places, keeps at most 2 requests in flight. Tasks 2 and 3 wait at it until
+  tasks 0 and 1 finish.
+- The timeline has one row per task. The model is the same as for threads, ⌈n / N⌉ × t, but with one thread.
+
 ## The timeline
 
 Under the log, each run draws a timeline: one row per thread that sent requests, with time running left to
@@ -290,6 +339,7 @@ src/python_data_structures_and_utilities/
     concurrency/
       server.py   the slow local server
       waits.py    one request to the server
+      async_waits.py  requests as asyncio tasks, on one thread
       compute.py  one CPU-bound item: plain Python arithmetic
       race.py     threads adding 1 to one shared counter, with or without a lock
       ways.py     run n items one at a time, or from a pool of threads or processes
