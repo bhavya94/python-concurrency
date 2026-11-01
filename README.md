@@ -54,6 +54,48 @@ Each line starts with the ms since the program started, then the thread that wro
 
 Try `--n` and `--wait-ms` to change n and t.
 
+## Waiting, from several threads
+
+`--way threads` sends the same requests from a pool of N threads, 4 by default and 2 here. Each thread takes the
+next request as soon as it is free.
+
+```console
+$ uv run pdsau waits --way threads --n 4 --workers 2
+   33.6ms  MainThread  slow server on port 61015; every answer waits 200 ms
+   33.7ms  MainThread  threads running: MainThread, server
+   33.8ms  worker_0    item 0: request sent, waiting for the answer
+   33.9ms  worker_1    item 1: request sent, waiting for the answer
+   33.9ms  MainThread  threads running: MainThread, server, worker_0, worker_1
+   41.8ms  server      connection accepted; starting a new thread to handle it
+   42.0ms  handler-0   received /item/0; sleeping 200 ms
+   42.0ms  server      connection accepted; starting a new thread to handle it
+   42.1ms  handler-1   received /item/1; sleeping 200 ms
+  247.1ms  handler-0   answering /item/0
+  247.3ms  handler-1   answering /item/1
+  249.6ms  worker_1    item 1: answered after 216 ms, using 5.5 ms of this thread's CPU
+  249.7ms  worker_1    item 2: request sent, waiting for the answer
+  249.8ms  worker_0    item 0: answered after 216 ms, using 5.9 ms of this thread's CPU
+  250.2ms  worker_0    item 3: request sent, waiting for the answer
+  250.6ms  server      connection accepted; starting a new thread to handle it
+  251.1ms  handler-2   received /item/2; sleeping 200 ms
+  251.2ms  server      connection accepted; starting a new thread to handle it
+  251.5ms  handler-3   received /item/3; sleeping 200 ms
+  454.5ms  handler-2   answering /item/2
+  454.7ms  handler-3   answering /item/3
+  455.8ms  worker_0    item 3: answered after 206 ms, using 0.8 ms of this thread's CPU
+  456.2ms  worker_1    item 2: answered after 206 ms, using 0.9 ms of this thread's CPU
+
+4 requests, 2 threads: 423 ms
+model: ⌈n/N⌉ × t = ⌈4/2⌉ × 200 = 2 × 200 = 400 ms
+```
+
+- `worker_0` and `worker_1` send items 0 and 1 within a millisecond of each other. Both wait at the same time.
+- A thread blocked in its socket read has released the GIL, the lock a thread must hold to run Python code. So
+  the other thread can run and send its own request.
+- When a thread's answer arrives, it sends the next waiting item at once. Which thread gets which item can change
+  from run to run.
+- So the total is about ⌈n / N⌉ × t: 2 rounds of 200 ms, not 4. `--workers 64 --n 64` takes one round.
+
 ## Layout
 
 ```
@@ -62,6 +104,6 @@ src/python_data_structures_and_utilities/
   language/     how Python runs your code
     concurrency/
       server.py   the slow local server
-      waits.py    requests, one at a time
+      waits.py    requests, one at a time or from threads
 tests/          one behavior test per concept
 ```
