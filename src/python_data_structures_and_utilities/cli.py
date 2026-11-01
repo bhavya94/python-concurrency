@@ -3,6 +3,7 @@
 import argparse
 import logging
 import math
+import time
 from functools import partial
 
 from python_data_structures_and_utilities.language.concurrency.compute import burn
@@ -54,10 +55,11 @@ def _compute(args: argparse.Namespace) -> None:
 
 
 def _race(args: argparse.Namespace) -> None:
-    expected = args.threads * args.times
-    got = race(args.threads, args.times, args.step)
+    expected, start = args.threads * args.times, time.time()
+    got = race(args.threads, args.times, args.step, args.lock)
     print(f"\nexpected: {args.threads} threads × {args.times} = {expected}")
     print(f"counter:  {got}, so {expected - got} updates lost ({(expected - got) / expected:.0%})")
+    print(f"took:     {(time.time() - start) * 1000:.0f} ms")
 
 
 def _ways(parser: argparse.ArgumentParser, things: str) -> None:
@@ -84,8 +86,12 @@ def main() -> None:
     racer.add_argument("--times", type=_at_least(1), default=1_000_000, help="additions per thread (default 1000000)")
     racer.add_argument("--step", choices=STEPS, default="plus-equals",
                        help="counter.value += 1, or read, call a function, write (default plus-equals)")
+    racer.add_argument("--lock", action="store_true",
+                       help="hold one shared lock around each read, call and write (read-call-write only)")
     racer.set_defaults(run=_race)
     args = parser.parse_args()
+    if getattr(args, "lock", False) and args.step != "read-call-write":
+        parser.error("--lock goes with --step read-call-write")
     if args.concept is None:
         parser.print_help()
         return
