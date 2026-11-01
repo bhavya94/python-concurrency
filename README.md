@@ -157,6 +157,55 @@ model: n × c = 4 × 100 = 398 ms
 - The timeline shows four busy rows, but they take turns rather than compute at once.
 - So the total is about n × c, the same as one at a time. Threads overlap waiting, not Python computing.
 
+## Computing, from several processes
+
+`--way processes` runs the same CPU-bound items in a pool of N worker processes. Each worker is a new Python
+interpreter, with its own memory and its own GIL.
+
+```console
+$ uv run pdsau compute --way processes --n 8 --workers 4
+   49.6ms  MainProcess     MainThread  each item goes to a worker as 137 pickled bytes: the task by reference, and the item
+   56.9ms  MainProcess     MainThread  pool made, with no processes yet; it starts one when an item arrives and no worker is free, up to 4
+  154.0ms  SpawnProcess-1  MainThread  item 0: computing
+  154.7ms  SpawnProcess-2  MainThread  item 1: computing
+  154.7ms  SpawnProcess-3  MainThread  item 2: computing
+  157.4ms  SpawnProcess-4  MainThread  item 3: computing
+  282.4ms  SpawnProcess-1  MainThread  item 0: done after 128 ms, using 121 ms of this thread's CPU
+  282.6ms  SpawnProcess-1  MainThread  item 4: computing
+  283.9ms  SpawnProcess-2  MainThread  item 1: done after 129 ms, using 123 ms of this thread's CPU
+  284.3ms  SpawnProcess-2  MainThread  item 5: computing
+  285.4ms  SpawnProcess-3  MainThread  item 2: done after 131 ms, using 122 ms of this thread's CPU
+  285.7ms  SpawnProcess-3  MainThread  item 6: computing
+  287.6ms  SpawnProcess-4  MainThread  item 3: done after 130 ms, using 123 ms of this thread's CPU
+  287.8ms  SpawnProcess-4  MainThread  item 7: computing
+  394.4ms  SpawnProcess-2  MainThread  item 5: done after 110 ms, using 108 ms of this thread's CPU
+  397.2ms  SpawnProcess-1  MainThread  item 4: done after 115 ms, using 113 ms of this thread's CPU
+  397.9ms  SpawnProcess-3  MainThread  item 6: done after 112 ms, using 111 ms of this thread's CPU
+  402.1ms  SpawnProcess-4  MainThread  item 7: done after 114 ms, using 112 ms of this thread's CPU
+
+SpawnProcess-1  |················000000000000000000000444444444444444444·····|
+SpawnProcess-2  |················111111111111111111111555555555555555555·····|
+SpawnProcess-3  |················222222222222222222222666666666666666666·····|
+SpawnProcess-4  |·················333333333333333333333777777777777777777····|
+                 0 ms                                                  373 ms
+
+8 items, 4 processes: 373 ms
+c, one item's own CPU time, on average: 117 ms
+S, the time before the first item began: 104 ms, to start the worker processes
+after the last item: 21 ms, for the worker processes to exit
+model: S + ⌈n/N⌉ × c = 104 + ⌈8/4⌉ × 117 = 338 ms. Each process has its own GIL, so up to N items compute at once. This Mac has 8 cores.
+```
+
+- With processes, the log gains a column for the process. Every item runs on `MainThread`, but in a different
+  worker process: `SpawnProcess-1` to `SpawnProcess-4`.
+- Each item uses about as much CPU as it takes on the clock. It never waits for a GIL, because its process has
+  its own. Compare the threads run above, where items stretched to nearly 4 times their CPU time.
+- The cost is S, the start-up: on macOS each worker is a fresh interpreter (`spawn`) that imports this package.
+  The pool starts the workers as items arrive.
+- The pool also sends each item as bytes. It pickles the task and the item number: 137 bytes here. A function
+  pickles by reference, as its module and name, and the worker imports it.
+- At the end, the pool waits for its worker processes to exit. The model leaves that time out.
+
 ## A race: threads share one counter
 
 `pdsau race` starts 4 threads that each add 1 to one shared counter, a million times. Adding 1 is three steps:
@@ -243,7 +292,7 @@ src/python_data_structures_and_utilities/
       waits.py    one request to the server
       compute.py  one CPU-bound item: plain Python arithmetic
       race.py     threads adding 1 to one shared counter, with or without a lock
-      ways.py     run n items one at a time, or from a pool of threads
+      ways.py     run n items one at a time, or from a pool of threads or processes
       timeline.py one row per thread, for the timeline
 tests/          one behavior test per concept
 ```

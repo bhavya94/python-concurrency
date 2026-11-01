@@ -47,3 +47,11 @@ def test_a_lock_needs_the_step_that_has_a_read_and_a_write():
     result = subprocess.run([PDSAU, "race", "--lock"], capture_output=True, text=True)
     assert result.returncode == 2
     assert "--lock goes with --step read-call-write" in result.stderr
+
+
+def test_each_worker_process_logs_and_runs_its_items():
+    result = subprocess.run([PDSAU, "compute", "--way", "processes", "--n", "2", "--workers", "2", "--size", "1250000"],
+                            capture_output=True, text=True)
+    rows = [line.split()[0] for line in result.stdout.splitlines() if "|" in line]
+    assert rows and all(row.startswith("SpawnProcess-") for row in rows)
+    assert "SpawnProcess-" in result.stderr  # the setup gave each worker process the parent's logging
