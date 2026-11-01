@@ -64,3 +64,19 @@ def test_asyncio_way_runs_one_task_per_request_and_overlaps_them():
     assert rows == ["item-0", "item-1", "item-2"]
     measured = int(re.search(r"one thread: (\d+) ms", result.stdout).group(1))
     assert measured < 200  # one round of 100 ms; one at a time would take 300
+
+
+def test_asyncio_blocking_way_sends_one_request_at_a_time():
+    result = subprocess.run([PDSAU, "waits", "--way", "asyncio-blocking", "--n", "3", "--workers", "3",
+                             "--wait-ms", "100"], capture_output=True, text=True)
+    measured = int(re.search(r"asyncio-blocking: (\d+) ms", result.stdout).group(1))
+    assert measured >= 300  # n × t, though 3 requests were allowed in flight
+
+
+def test_asyncio_to_thread_way_runs_the_requests_on_pool_threads_at_once():
+    result = subprocess.run([PDSAU, "waits", "--way", "asyncio-to-thread", "--n", "3", "--workers", "3",
+                             "--wait-ms", "100"], capture_output=True, text=True)
+    rows = [line.split()[0] for line in result.stdout.splitlines() if "|" in line]
+    assert rows and all(row.startswith("asyncio_") for row in rows)
+    measured = int(re.search(r"pool thread: (\d+) ms", result.stdout).group(1))
+    assert measured < 200  # one round of 100 ms
