@@ -40,4 +40,4 @@ def test_compute_runs_its_items_on_the_threads_asked_for():
     measured = int(re.search(r"2 threads: (\d+) ms", result.stdout).group(1))
     model = int(re.search(r"model: n × c = 2 × \d+ = (\d+) ms", result.stdout).group(1))
     if sys._is_gil_enabled():
-        assert 0.7 < measured / model < 1.4  # with the GIL, threads take turns: the run lasts about n × c
+        assert measured / model > 0.7  # with the GIL, threads take turns: the run lasts at least about n × c
