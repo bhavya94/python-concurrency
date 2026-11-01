@@ -15,12 +15,14 @@ log = logging.getLogger(__name__)
 
 
 def fetch(url: str, item: int) -> None:
-    """One blocking request."""
-    start = time.perf_counter()
+    """One blocking request. It logs the time on the clock and the CPU time this thread used: a thread that is
+    blocked waits without computing, so its CPU time stays near zero."""
+    start, cpu = time.perf_counter(), time.thread_time()
     log.info("item %d: request sent, waiting for the answer", item)
     with urlopen(url) as answer:
         answer.read()
-    log.info("item %d: answered after %.0f ms", item, (time.perf_counter() - start) * 1000)
+    log.info("item %d: answered after %.0f ms, using %.1f ms of this thread's CPU", item,
+             (time.perf_counter() - start) * 1000, (time.thread_time() - cpu) * 1000)
 
 
 def one_at_a_time(server: SlowServer, n: int) -> float:

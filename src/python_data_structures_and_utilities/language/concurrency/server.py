@@ -17,7 +17,12 @@ class _SlowHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"  # one request per connection: the server closes it after the answer
 
     def do_GET(self):
+        # ThreadingHTTPServer runs each request on a new thread, named like "Thread-3 (process_request_thread)".
+        # A short name keeps the log readable.
+        threading.current_thread().name = "handler-" + self.path.rsplit("/", 1)[-1]
+        log.info("received %s; sleeping %.0f ms", self.path, self.delay * 1000)
         time.sleep(self.delay)
+        log.info("answering %s", self.path)
         body = f"answer for {self.path}\n".encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
@@ -25,7 +30,15 @@ class _SlowHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, format, *args):
-        pass  # the client logs each request already; a server line too would double the output
+        pass  # do_GET logs each request; the library's own access line would repeat it
+
+
+class _Server(ThreadingHTTPServer):
+    def process_request(self, request, client_address):
+        # Runs on the "server" thread, which only accepts connections. The parent class starts a new thread for
+        # each one, so this thread is free to accept the next connection at once.
+        log.info("connection accepted; starting a new thread to handle it")
+        super().process_request(request, client_address)
 
 
 class SlowServer:
@@ -36,9 +49,10 @@ class SlowServer:
 
     def __enter__(self) -> "SlowServer":
         handler = type("Handler", (_SlowHandler,), {"delay": self.delay})
-        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)  # port 0: the OS picks a free port
+        self._httpd = _Server(("127.0.0.1", 0), handler)  # port 0: the OS picks a free port
         threading.Thread(target=self._httpd.serve_forever, name="server", daemon=True).start()
         log.info("slow server on port %d; every answer waits %.0f ms", self.port, self.delay * 1000)
+        log.info("threads running: %s", ", ".join(t.name for t in threading.enumerate()))
         return self
 
     def __exit__(self, *exc) -> None:
