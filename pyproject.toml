@@ -1,0 +1,18 @@
+[project]
+name = "python-data-structures-and-utilities"
+version = "0.1.0"
+description = "How Python runs your code, built up one concept per pull request, each one runnable."
+readme = "README.md"
+authors = [{ name = "Bhavya Sharma" }]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+pdsau = "python_data_structures_and_utilities.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["pytest>=9.1.1"]
