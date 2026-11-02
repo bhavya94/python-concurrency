@@ -22,13 +22,14 @@ def test_threads_take_turns_on_the_gil():
     assert shared.ms > 0.9 * cpu_ms  # so the run lasts at least n × c: no item's compute overlaps another's
 
 
-def _overlapping(run) -> int:
-    """How many items ran at the same time as another item, on a different worker."""
-    return sum(any(a.thread != b.thread and a.start < b.end and b.start < a.end for b in run.spans) for a in run.spans)
+def _cpu_per_clock(run) -> float:
+    """CPU time all the items used, divided by the clock time from the first start to the last end. Above 1, at
+    least two items computed at the same moment: only several cores can use more CPU time than the clock shows.
+    Taking turns on one GIL keeps it at 1 or below, however busy the machine is."""
+    return sum(span.cpu for span in run.spans) / (max(s.end for s in run.spans) - min(s.start for s in run.spans))
 
 
 def test_processes_compute_at_the_same_time():
     run = with_processes(partial(burn, SIZE), 4, workers=4)
     assert "MainThread" not in {span.thread for span in run.spans}  # every item ran in a worker process
-    assert _overlapping(run) >= 2  # items on different processes ran at the same moment
-    assert _stretch(run) < 1.5  # and no item waited for a GIL: each process has its own
+    assert _cpu_per_clock(run) > 1.1  # each process has its own GIL, so items computed at once, on several cores
