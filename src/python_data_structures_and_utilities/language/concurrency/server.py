@@ -34,6 +34,11 @@ class _SlowHandler(BaseHTTPRequestHandler):
 
 
 class _Server(ThreadingHTTPServer):
+    # The listen backlog: connections the OS holds until this server accepts them. The default is 5. When many
+    # threads connect at once, the OS drops the extra connection attempts, and each client retries about a
+    # second later.
+    request_queue_size = 128
+
     def process_request(self, request, client_address):
         # Runs on the "server" thread, which only accepts connections. The parent class starts a new thread for
         # each one, so this thread is free to accept the next connection at once.
