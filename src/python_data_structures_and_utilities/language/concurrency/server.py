@@ -68,5 +68,6 @@ class SlowServer:
     def port(self) -> int:
         return self._httpd.server_address[1]
 
-    def url(self, item: int) -> str:
-        return f"http://127.0.0.1:{self.port}/item/{item}"
+
+def url(port: int, item: int) -> str:
+    return f"http://127.0.0.1:{port}/item/{item}"

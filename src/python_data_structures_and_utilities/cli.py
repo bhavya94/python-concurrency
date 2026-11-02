@@ -3,9 +3,12 @@
 import argparse
 import logging
 import math
+from functools import partial
 
 from python_data_structures_and_utilities.language.concurrency.server import SlowServer
-from python_data_structures_and_utilities.language.concurrency.waits import one_at_a_time, with_threads
+from python_data_structures_and_utilities.language.concurrency.timeline import render
+from python_data_structures_and_utilities.language.concurrency.waits import fetch
+from python_data_structures_and_utilities.language.concurrency.ways import one_at_a_time, with_threads
 
 # Each log line starts with the ms since the program started, then the thread that wrote it.
 LOG_FORMAT = "%(relativeCreated)7.1fms  %(threadName)-10s  %(message)s"
@@ -22,16 +25,15 @@ def _at_least(minimum: int):
 def _waits(args: argparse.Namespace) -> None:
     n, t, workers = args.n, args.wait_ms, args.workers
     with SlowServer(delay=t / 1000) as server:
-        if args.way == "threads":
-            total = with_threads(server, n, workers)
-        else:
-            total = one_at_a_time(server, n)
+        task = partial(fetch, server.port)
+        run = with_threads(task, n, workers) if args.way == "threads" else one_at_a_time(task, n)
+    print("\n" + render(run))
     if args.way == "threads":
         rounds = math.ceil(n / workers)
-        print(f"\n{n} requests, {workers} threads: {total * 1000:.0f} ms")
+        print(f"\n{n} requests, {workers} threads: {run.ms:.0f} ms")
         print(f"model: ⌈n/N⌉ × t = ⌈{n}/{workers}⌉ × {t} = {rounds} × {t} = {rounds * t} ms")
     else:
-        print(f"\n{n} requests, one at a time: {total * 1000:.0f} ms")
+        print(f"\n{n} requests, one at a time: {run.ms:.0f} ms")
         print(f"model: n × t = {n} × {t} = {n * t} ms")
 
 
