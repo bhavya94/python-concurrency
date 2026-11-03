@@ -7,6 +7,7 @@ import os
 import time
 from functools import partial
 
+from python_data_structures_and_utilities.language.concurrency.async_waits import with_asyncio
 from python_data_structures_and_utilities.language.concurrency.compute import burn
 from python_data_structures_and_utilities.language.concurrency.race import STEPS, race
 from python_data_structures_and_utilities.language.concurrency.server import SlowServer
@@ -18,6 +19,8 @@ from python_data_structures_and_utilities.language.concurrency.ways import one_a
 LOG_FORMAT = "%(relativeCreated)7.1fms  %(threadName)-10s  %(message)s"
 # With worker processes, a column for the process too.
 PROCESS_LOG_FORMAT = "%(relativeCreated)7.1fms  %(processName)-15s %(threadName)-10s  %(message)s"
+# With asyncio, a column for the task: None outside any task.
+TASK_LOG_FORMAT = "%(relativeCreated)7.1fms  %(threadName)-10s  %(taskName)-6s  %(message)s"
 
 
 def _log_like_the_parent(start: float) -> None:
@@ -45,11 +48,15 @@ def _run(args: argparse.Namespace, task):
 def _waits(args: argparse.Namespace) -> None:
     n, t, workers = args.n, args.wait_ms, args.workers
     with SlowServer(delay=t / 1000) as server:
-        run = _run(args, partial(fetch, server.port))
+        if args.way == "asyncio":
+            run = with_asyncio(server.port, n, workers)
+        else:
+            run = _run(args, partial(fetch, server.port))
     print("\n" + render(run))
-    if args.way == "threads":
+    if args.way in ("threads", "asyncio"):
         rounds = math.ceil(n / workers)
-        print(f"\n{n} requests, {workers} threads: {run.ms:.0f} ms")
+        who = f"{workers} threads" if args.way == "threads" else f"asyncio, {workers} tasks in flight, one thread"
+        print(f"\n{n} requests, {who}: {run.ms:.0f} ms")
         print(f"model: ⌈n/N⌉ × t = ⌈{n}/{workers}⌉ × {t} = {rounds} × {t} = {rounds * t} ms")
     else:
         print(f"\n{n} requests, one at a time: {run.ms:.0f} ms")
@@ -88,14 +95,15 @@ def _ways(parser: argparse.ArgumentParser, things: str, ways: tuple[str, ...] = 
     parser.add_argument("--way", choices=ways, default="one-at-a-time",
                         help=f"{', '.join(ways)} (default one-at-a-time)")
     parser.add_argument("--n", type=_at_least(1), default=8, help=f"how many {things} (default 8)")
-    parser.add_argument("--workers", type=_at_least(1), default=4, help="threads or processes in the pool (default 4)")
+    parser.add_argument("--workers", type=_at_least(1), default=4,
+                        help="threads or processes in the pool, or asyncio tasks in flight (default 4)")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="pdsau", description="Run one concept and watch what it does.")
     concepts = parser.add_subparsers(dest="concept", title="concepts")
     waits = concepts.add_parser("waits", help="n requests to a slow local server")
-    _ways(waits, "requests")
+    _ways(waits, "requests", ("one-at-a-time", "threads", "asyncio"))
     waits.add_argument("--wait-ms", type=_at_least(0), default=200, help="how long each answer waits (default 200)")
     waits.set_defaults(run=_waits)
     compute = concepts.add_parser("compute", help="n CPU-bound items of plain Python arithmetic")
@@ -117,6 +125,6 @@ def main() -> None:
     if args.concept is None:
         parser.print_help()
         return
-    processes = getattr(args, "way", "") == "processes"
-    logging.basicConfig(level=logging.INFO, format=PROCESS_LOG_FORMAT if processes else LOG_FORMAT)
+    formats = {"processes": PROCESS_LOG_FORMAT, "asyncio": TASK_LOG_FORMAT}
+    logging.basicConfig(level=logging.INFO, format=formats.get(getattr(args, "way", ""), LOG_FORMAT))
     args.run(args)
