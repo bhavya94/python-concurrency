@@ -87,3 +87,10 @@ def test_futures_reports_the_items_that_worked_and_each_error():
                             capture_output=True, text=True)
     assert "2 items worked: [0, 2]" in result.stdout
     assert "item 1 failed: <HTTPError 500" in result.stdout
+
+
+def test_futures_with_a_timeout_reports_what_it_cancelled_and_what_finished_anyway():
+    result = subprocess.run([PDSAU, "futures", "--n", "6", "--workers", "2", "--timeout-ms", "300"],
+                            capture_output=True, text=True)
+    assert "done before the timeout: [0, 1]" in result.stdout
+    assert "cancelled while queued:  [4, 5]" in result.stdout

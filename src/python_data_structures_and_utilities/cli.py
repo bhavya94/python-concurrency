@@ -9,7 +9,7 @@ from functools import partial
 
 from python_data_structures_and_utilities.language.concurrency.async_waits import with_asyncio
 from python_data_structures_and_utilities.language.concurrency.compute import burn
-from python_data_structures_and_utilities.language.concurrency.futures import collect
+from python_data_structures_and_utilities.language.concurrency.futures import collect, with_timeout
 from python_data_structures_and_utilities.language.concurrency.race import STEPS, race
 from python_data_structures_and_utilities.language.concurrency.server import SlowServer
 from python_data_structures_and_utilities.language.concurrency.timeline import render
@@ -92,6 +92,13 @@ def _compute(args: argparse.Namespace) -> None:
 
 
 def _futures(args: argparse.Namespace) -> None:
+    if args.timeout_ms is not None:
+        with SlowServer(delay=args.wait_ms / 1000) as server:
+            outcome = with_timeout(server.port, args.n, args.workers, args.timeout_ms / 1000)
+        print(f"\ndone before the timeout: {outcome.done}")
+        print(f"cancelled while queued:  {outcome.cancelled}")
+        print(f"running at the timeout, finished anyway: {outcome.finished_late}")
+        return
     with SlowServer(delay=args.wait_ms / 1000, fail=frozenset(args.fail)) as server:
         spans, errors = collect(server.port, args.n, args.workers)
     print(f"\n{len(spans)} items worked: {sorted(span.item for span in spans)}")
@@ -133,6 +140,8 @@ def main() -> None:
     futures.add_argument("--wait-ms", type=_at_least(0), default=200, help="how long each answer waits (default 200)")
     futures.add_argument("--fail", type=_at_least(0), nargs="*", default=[2],
                          help="items the server answers with an error (default 2)")
+    futures.add_argument("--timeout-ms", type=_at_least(0), default=None,
+                         help="wait at most this long for all the results, then cancel what's left")
     futures.set_defaults(run=_futures)
     racer = concepts.add_parser("race", help="threads add 1 to one shared counter; count the lost updates")
     racer.add_argument("--threads", type=_at_least(1), default=4, help="how many threads (default 4)")

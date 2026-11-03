@@ -363,6 +363,51 @@ item 2 failed: <HTTPError 500: 'Internal Server Error'>
 - Item 2's request fails inside `worker_2`. The error doesn't vanish in that thread: `future.result()` raises
   it again on `MainThread`, where the results are collected.
 
+## Timeouts and cancel(): a timeout stops your waiting, not the work
+
+`--timeout-ms` waits at most that long for all the results, then cancels what's left. Here 6 requests of 200 ms
+run on 2 threads, with a timeout of 300 ms.
+
+```console
+$ uv run pdsau futures --timeout-ms 300 --n 6 --workers 2
+   47.5ms  MainThread  slow server on port 50686; every answer waits 200 ms
+   47.6ms  MainThread  threads running: MainThread, server
+   47.7ms  worker_0    item 0: request sent, waiting for the answer
+   47.8ms  worker_1    item 1: request sent, waiting for the answer
+   56.3ms  server      connection accepted; starting a new thread to handle it
+   56.5ms  handler-1   received /item/1; sleeping 200 ms
+   56.6ms  server      connection accepted; starting a new thread to handle it
+   56.7ms  handler-0   received /item/0; sleeping 200 ms
+  261.6ms  handler-1   answering /item/1
+  261.8ms  handler-0   answering /item/0
+  263.5ms  worker_1    item 1: answered after 216 ms, using 5.3 ms of this thread's CPU
+  263.7ms  worker_1    item 2: request sent, waiting for the answer
+  264.2ms  worker_0    item 0: answered after 216 ms, using 6.7 ms of this thread's CPU
+  264.3ms  worker_0    item 3: request sent, waiting for the answer
+  264.8ms  server      connection accepted; starting a new thread to handle it
+  265.3ms  handler-2   received /item/2; sleeping 200 ms
+  265.4ms  server      connection accepted; starting a new thread to handle it
+  265.8ms  handler-3   received /item/3; sleeping 200 ms
+  349.3ms  MainThread  timed out after 302 ms: 2 of 6 items done
+  349.6ms  MainThread  cancel() stopped the queued items [4, 5]; it can't stop the running items [2, 3]
+  468.0ms  handler-2   answering /item/2
+  469.3ms  worker_1    item 2: answered after 206 ms, using 1.2 ms of this thread's CPU
+  470.7ms  handler-3   answering /item/3
+  471.3ms  worker_0    item 3: answered after 207 ms, using 0.8 ms of this thread's CPU
+  471.7ms  MainThread  the pool shut down 424 ms after the start, once the running items finished
+
+done before the timeout: [0, 1]
+cancelled while queued:  [4, 5]
+running at the timeout, finished anyway: [2, 3]
+```
+
+- At the timeout, `as_completed` raises `TimeoutError`. Items 0 and 1 are done, 2 and 3 are running, and 4 and
+  5 are still queued.
+- `future.cancel()` stops a queued item and returns True. For a running item it returns False: Python can't stop
+  a thread from outside.
+- Leaving the pool's `with` block shuts the pool down, and that waits for items 2 and 3. They finish about
+  120 ms after the timeout.
+
 ## A race: threads share one counter
 
 `pdsau race` starts 4 threads that each add 1 to one shared counter, a million times. Adding 1 is three steps:
@@ -449,7 +494,7 @@ src/python_data_structures_and_utilities/
       waits.py    one request to the server
       async_waits.py  requests as asyncio tasks, on one thread; a blocking call, and its fix
       compute.py  one CPU-bound item: plain Python arithmetic
-      futures.py  submit to a pool, collect results and errors as they finish
+      futures.py  submit to a pool, collect results and errors; timeouts and cancel()
       race.py     threads adding 1 to one shared counter, with or without a lock
       ways.py     run n items one at a time, or from a pool of threads or processes
       timeline.py one row per thread, for the timeline
