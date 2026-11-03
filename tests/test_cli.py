@@ -80,3 +80,10 @@ def test_asyncio_to_thread_way_runs_the_requests_on_pool_threads_at_once():
     assert rows and all(row.startswith("asyncio_") for row in rows)
     measured = int(re.search(r"pool thread: (\d+) ms", result.stdout).group(1))
     assert measured < 200  # one round of 100 ms
+
+
+def test_futures_reports_the_items_that_worked_and_each_error():
+    result = subprocess.run([PDSAU, "futures", "--n", "3", "--workers", "3", "--wait-ms", "50", "--fail", "1"],
+                            capture_output=True, text=True)
+    assert "2 items worked: [0, 2]" in result.stdout
+    assert "item 1 failed: <HTTPError 500" in result.stdout

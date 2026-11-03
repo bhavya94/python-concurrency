@@ -307,6 +307,62 @@ model: S + ⌈n/N⌉ × c = 104 + ⌈8/4⌉ × 117 = 338 ms. Each process has it
   pickles by reference, as its module and name, and the worker imports it.
 - At the end, the pool waits for its worker processes to exit. The model leaves that time out.
 
+## Errors through futures
+
+`pdsau futures` submits 6 requests to a pool of 3 threads, one by one, and collects the results as they finish.
+The server answers item 2 with an error, HTTP 500.
+
+```console
+$ uv run pdsau futures
+   73.8ms  MainThread  slow server on port 50162; every answer waits 200 ms
+   74.1ms  MainThread  threads running: MainThread, server
+   74.2ms  worker_0    item 0: request sent, waiting for the answer
+   74.3ms  worker_1    item 1: request sent, waiting for the answer
+   74.4ms  worker_2    item 2: request sent, waiting for the answer
+   74.5ms  MainThread  submitted 6 items; each future waits for a worker
+   86.8ms  server      connection accepted; starting a new thread to handle it
+   87.0ms  handler-2   received /item/2; sleeping 200 ms
+   87.0ms  server      connection accepted; starting a new thread to handle it
+   87.2ms  handler-0   received /item/0; sleeping 200 ms
+   87.2ms  server      connection accepted; starting a new thread to handle it
+   87.3ms  handler-1   received /item/1; sleeping 200 ms
+  288.6ms  handler-2   answering /item/2 with an error, HTTP 500
+  290.8ms  worker_2    item 3: request sent, waiting for the answer
+  290.9ms  MainThread  item 2: its worker raised <HTTPError 500: 'Internal Server Error'>; result() raised it again here
+  292.1ms  server      connection accepted; starting a new thread to handle it
+  292.3ms  handler-0   answering /item/0
+  292.4ms  handler-1   answering /item/1
+  292.8ms  handler-3   received /item/3; sleeping 200 ms
+  293.2ms  worker_0    item 0: answered after 219 ms, using 7.1 ms of this thread's CPU
+  293.6ms  worker_0    item 4: request sent, waiting for the answer
+  293.5ms  worker_1    item 1: answered after 219 ms, using 6.1 ms of this thread's CPU
+  293.9ms  worker_1    item 5: request sent, waiting for the answer
+  293.7ms  MainThread  item 0: result collected
+  294.1ms  MainThread  item 1: result collected
+  294.3ms  server      connection accepted; starting a new thread to handle it
+  294.9ms  handler-4   received /item/4; sleeping 200 ms
+  295.1ms  server      connection accepted; starting a new thread to handle it
+  295.6ms  handler-5   received /item/5; sleeping 200 ms
+  498.1ms  handler-3   answering /item/3
+  499.1ms  worker_2    item 3: answered after 208 ms, using 1.5 ms of this thread's CPU
+  499.5ms  MainThread  item 3: result collected
+  500.1ms  handler-4   answering /item/4
+  500.2ms  handler-5   answering /item/5
+  500.9ms  worker_0    item 4: answered after 207 ms, using 0.8 ms of this thread's CPU
+  501.4ms  worker_1    item 5: answered after 207 ms, using 0.6 ms of this thread's CPU
+  501.6ms  MainThread  item 4: result collected
+  501.7ms  MainThread  item 5: result collected
+
+5 items worked: [0, 1, 3, 4, 5]
+item 2 failed: <HTTPError 500: 'Internal Server Error'>
+```
+
+- `pool.submit(fetch, port, item)` returns a Future at once: a placeholder for a result that doesn't exist yet.
+- `as_completed(futures)` hands back each future as it finishes. The results arrive in finishing order, not in
+  the order the items were submitted.
+- Item 2's request fails inside `worker_2`. The error doesn't vanish in that thread: `future.result()` raises
+  it again on `MainThread`, where the results are collected.
+
 ## A race: threads share one counter
 
 `pdsau race` starts 4 threads that each add 1 to one shared counter, a million times. Adding 1 is three steps:
@@ -386,13 +442,14 @@ took:     159 ms
 
 ```
 src/python_data_structures_and_utilities/
-  cli.py        the pdsau command: waits, compute and race
+  cli.py        the pdsau command: waits, compute, futures and race
   language/     how Python runs your code
     concurrency/
       server.py   the slow local server
       waits.py    one request to the server
       async_waits.py  requests as asyncio tasks, on one thread; a blocking call, and its fix
       compute.py  one CPU-bound item: plain Python arithmetic
+      futures.py  submit to a pool, collect results and errors as they finish
       race.py     threads adding 1 to one shared counter, with or without a lock
       ways.py     run n items one at a time, or from a pool of threads or processes
       timeline.py one row per thread, for the timeline

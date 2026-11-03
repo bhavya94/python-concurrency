@@ -9,6 +9,7 @@ from functools import partial
 
 from python_data_structures_and_utilities.language.concurrency.async_waits import with_asyncio
 from python_data_structures_and_utilities.language.concurrency.compute import burn
+from python_data_structures_and_utilities.language.concurrency.futures import collect
 from python_data_structures_and_utilities.language.concurrency.race import STEPS, race
 from python_data_structures_and_utilities.language.concurrency.server import SlowServer
 from python_data_structures_and_utilities.language.concurrency.timeline import render
@@ -90,6 +91,14 @@ def _compute(args: argparse.Namespace) -> None:
           (". Only the thread that holds the GIL computes, so threads take turns." if args.way == "threads" else ""))
 
 
+def _futures(args: argparse.Namespace) -> None:
+    with SlowServer(delay=args.wait_ms / 1000, fail=frozenset(args.fail)) as server:
+        spans, errors = collect(server.port, args.n, args.workers)
+    print(f"\n{len(spans)} items worked: {sorted(span.item for span in spans)}")
+    for item, error in sorted(errors.items()):
+        print(f"item {item} failed: {error!r}")
+
+
 def _race(args: argparse.Namespace) -> None:
     expected, start = args.threads * args.times, time.time()
     got = race(args.threads, args.times, args.step, args.lock)
@@ -118,6 +127,13 @@ def main() -> None:
     compute.add_argument("--size", type=_at_least(1), default=2_500_000,
                          help="loop steps per item; 2,500,000 is about 100 ms on an M1 Mac (default)")
     compute.set_defaults(run=_compute)
+    futures = concepts.add_parser("futures", help="submit requests to a pool and collect results and errors")
+    futures.add_argument("--n", type=_at_least(1), default=6, help="how many requests (default 6)")
+    futures.add_argument("--workers", type=_at_least(1), default=3, help="threads in the pool (default 3)")
+    futures.add_argument("--wait-ms", type=_at_least(0), default=200, help="how long each answer waits (default 200)")
+    futures.add_argument("--fail", type=_at_least(0), nargs="*", default=[2],
+                         help="items the server answers with an error (default 2)")
+    futures.set_defaults(run=_futures)
     racer = concepts.add_parser("race", help="threads add 1 to one shared counter; count the lost updates")
     racer.add_argument("--threads", type=_at_least(1), default=4, help="how many threads (default 4)")
     racer.add_argument("--times", type=_at_least(1), default=1_000_000, help="additions per thread (default 1000000)")

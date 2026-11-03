@@ -1,6 +1,7 @@
 """A slow web server on this machine, so every wait in these labs is a real wait on a network socket.
 
-A request for /item/<n> sleeps `delay` seconds, then answers. The server answers each request on its own
+A request for /item/<n> sleeps `delay` seconds, then answers. An item listed in `fail` answers with an error,
+HTTP 500, after the same wait. The server answers each request on its own
 thread, so it never makes one request wait for another. Any queueing you see is the client's doing.
 """
 
@@ -14,6 +15,7 @@ log = logging.getLogger(__name__)
 
 class _SlowHandler(BaseHTTPRequestHandler):
     delay = 0.0
+    fail: frozenset[int] = frozenset()
     protocol_version = "HTTP/1.0"  # one request per connection: the server closes it after the answer
 
     def do_GET(self):
@@ -22,9 +24,10 @@ class _SlowHandler(BaseHTTPRequestHandler):
         threading.current_thread().name = "handler-" + self.path.rsplit("/", 1)[-1]
         log.info("received %s; sleeping %.0f ms", self.path, self.delay * 1000)
         time.sleep(self.delay)
-        log.info("answering %s", self.path)
+        failing = int(self.path.rsplit("/", 1)[-1]) in self.fail
+        log.info("answering %s%s", self.path, " with an error, HTTP 500" if failing else "")
         body = f"answer for {self.path}\n".encode()
-        self.send_response(200)
+        self.send_response(500 if failing else 200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -49,11 +52,12 @@ class _Server(ThreadingHTTPServer):
 class SlowServer:
     """`with SlowServer(delay=0.2) as server:` starts it on 127.0.0.1, on a free port, and stops it at the end."""
 
-    def __init__(self, delay: float):
+    def __init__(self, delay: float, fail: frozenset[int] = frozenset()):
         self.delay = delay
+        self.fail = fail
 
     def __enter__(self) -> "SlowServer":
-        handler = type("Handler", (_SlowHandler,), {"delay": self.delay})
+        handler = type("Handler", (_SlowHandler,), {"delay": self.delay, "fail": self.fail})
         self._httpd = _Server(("127.0.0.1", 0), handler)  # port 0: the OS picks a free port
         threading.Thread(target=self._httpd.serve_forever, name="server", daemon=True).start()
         log.info("slow server on port %d; every answer waits %.0f ms", self.port, self.delay * 1000)
