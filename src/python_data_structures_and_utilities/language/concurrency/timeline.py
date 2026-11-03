@@ -8,6 +8,8 @@ column on different rows happened at the same time.
                0 ms                                                 423 ms
 """
 
+import multiprocessing
+import threading
 from dataclasses import dataclass
 
 
@@ -21,6 +23,13 @@ class Span:
     start: float
     end: float
     cpu: float = 0.0
+
+
+def who() -> str:
+    """The name of what runs this code: the thread, or, in a worker process, the process. Every item in a worker
+    process runs on that process's MainThread, so the thread's name alone would not tell the workers apart."""
+    process = multiprocessing.current_process()
+    return threading.current_thread().name if process.name == "MainProcess" else process.name
 
 
 @dataclass(frozen=True)

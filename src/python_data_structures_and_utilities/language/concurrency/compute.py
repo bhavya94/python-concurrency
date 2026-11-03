@@ -6,10 +6,9 @@ moment. Each item's time on the clock stretches, while its CPU time stays the sa
 """
 
 import logging
-import threading
 import time
 
-from python_data_structures_and_utilities.language.concurrency.timeline import Span
+from python_data_structures_and_utilities.language.concurrency.timeline import Span, who
 
 log = logging.getLogger(__name__)
 
@@ -24,4 +23,4 @@ def burn(size: int, item: int) -> Span:
     end, used = time.time(), time.thread_time() - cpu
     log.info("item %d: done after %.0f ms, using %.0f ms of this thread's CPU", item, (end - start) * 1000,
              used * 1000)
-    return Span(item, threading.current_thread().name, start, end, used)
+    return Span(item, who(), start, end, used)
