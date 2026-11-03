@@ -33,3 +33,9 @@ def test_processes_compute_at_the_same_time():
     run = with_processes(partial(burn, SIZE), 4, workers=4)
     assert "MainThread" not in {span.thread for span in run.spans}  # every item ran in a worker process
     assert _cpu_per_clock(run) > 1.1  # each process has its own GIL, so items computed at once, on several cores
+
+
+@pytest.mark.skipif(sys._is_gil_enabled(), reason="needs the free-threaded build: python 3.14t")
+def test_without_a_gil_threads_compute_at_the_same_time():
+    run = with_threads(partial(burn, SIZE), 4, workers=4)
+    assert _cpu_per_clock(run) > 1.1  # no GIL to take turns on, so items computed at once, on several cores

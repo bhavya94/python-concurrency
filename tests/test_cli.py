@@ -38,9 +38,12 @@ def test_compute_runs_its_items_on_the_threads_asked_for():
     rows = [line.split()[0] for line in result.stdout.splitlines() if "|" in line]
     assert sorted(rows) == ["worker_0", "worker_1"]
     measured = int(re.search(r"2 threads: (\d+) ms", result.stdout).group(1))
-    model = int(re.search(r"model: n × c = 2 × \d+ = (\d+) ms", result.stdout).group(1))
     if sys._is_gil_enabled():
+        model = int(re.search(r"model: n × c = 2 × \d+ = (\d+) ms", result.stdout).group(1))
         assert measured / model > 0.7  # with the GIL, threads take turns: the run lasts at least about n × c
+    else:
+        c, model = re.search(r"model: ⌈n/min\(N, cores\)⌉ × c = ⌈2/2⌉ × (\d+) = (\d+) ms", result.stdout).groups()
+        assert model == c  # no GIL: 2 items on 2 threads take 1 round
 
 
 def test_a_lock_needs_the_step_that_has_a_read_and_a_write():

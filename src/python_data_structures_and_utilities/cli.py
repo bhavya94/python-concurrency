@@ -4,6 +4,7 @@ import argparse
 import logging
 import math
 import os
+import sys
 import time
 from functools import partial
 
@@ -87,6 +88,12 @@ def _compute(args: argparse.Namespace) -> None:
               f"Each process has its own GIL, so up to N items compute at once. This Mac has "
               f"{os.process_cpu_count()} cores.")
         return
+    if args.way == "threads" and not sys._is_gil_enabled():
+        cores = os.process_cpu_count()
+        rounds = math.ceil(n / min(workers, cores))
+        print(f"no GIL: this is the free-threaded build, so threads compute at the same time, on up to {cores} cores")
+        print(f"model: ⌈n/min(N, cores)⌉ × c = ⌈{n}/{min(workers, cores)}⌉ × {c:.0f} = {rounds * c:.0f} ms")
+        return
     print(f"model: n × c = {n} × {c:.0f} = {n * c:.0f} ms" +
           (". Only the thread that holds the GIL computes, so threads take turns." if args.way == "threads" else ""))
 
@@ -107,6 +114,8 @@ def _futures(args: argparse.Namespace) -> None:
 
 
 def _race(args: argparse.Namespace) -> None:
+    if not sys._is_gil_enabled():
+        print("no GIL: this is the free-threaded build, so threads run Python code at the same time")
     expected, start = args.threads * args.times, time.time()
     got = race(args.threads, args.times, args.step, args.lock)
     print(f"\nexpected: {args.threads} threads × {args.times} = {expected}")

@@ -13,6 +13,13 @@ uv run pytest
 uv run pdsau --help
 ```
 
+To run any command or the tests on the free-threaded build, with no GIL:
+
+```console
+UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t pytest
+UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t pdsau compute --way threads
+```
+
 ## Waiting, one request at a time
 
 `pdsau waits` starts a slow web server inside the program. Each answer takes 200 ms. Then it sends requests one
@@ -482,6 +489,60 @@ took:     159 ms
 - The lock costs time: every one of the 4 million additions now takes and releases it.
 - The lock must cover the whole read, call and write. A lock around only the write still loses updates, and so
   does one lock per thread.
+
+## Free-threaded Python: the same threads, no GIL
+
+Python 3.14 also comes as a free-threaded build, `python3.14t`, with no GIL. uv installs it and keeps it in a
+second environment, `.venv-ft`, so the default `.venv` stays as it is. The same commands then run without a GIL.
+
+```console
+$ UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t pdsau compute --way threads --n 4 --workers 4
+   42.1ms  worker_0    item 0: computing
+   42.3ms  worker_1    item 1: computing
+   42.4ms  worker_2    item 2: computing
+   42.5ms  worker_3    item 3: computing
+   42.6ms  MainThread  threads running: MainThread, worker_0, worker_1, worker_2, worker_3
+  154.3ms  worker_3    item 3: done after 112 ms, using 105 ms of this thread's CPU
+  156.9ms  worker_0    item 0: done after 115 ms, using 107 ms of this thread's CPU
+  164.0ms  worker_2    item 2: done after 122 ms, using 113 ms of this thread's CPU
+  165.2ms  worker_1    item 1: done after 123 ms, using 111 ms of this thread's CPU
+
+worker_0  |0000000000000000000000000000000000000000000000000000000·····|
+worker_1  |11111111111111111111111111111111111111111111111111111111111·|
+worker_2  |22222222222222222222222222222222222222222222222222222222222·|
+worker_3  |333333333333333333333333333333333333333333333333333333······|
+           0 ms                                                  124 ms
+
+4 items, 4 threads: 124 ms
+c, one item's own CPU time, on average: 109 ms
+no GIL: this is the free-threaded build, so threads compute at the same time, on up to 8 cores
+model: ⌈n/min(N, cores)⌉ × c = ⌈4/4⌉ × 109 = 109 ms
+```
+
+- Each item takes about as long on the clock as it uses CPU, as with processes. With the GIL, the same items
+  stretched to nearly 4 times their CPU time.
+- 4 items on 4 threads take one round, not four.
+
+The race from above, with `counter.value += 1`, and then with the lock:
+
+```console
+$ UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t pdsau race 2>/dev/null
+no GIL: this is the free-threaded build, so threads run Python code at the same time
+
+expected: 4 threads × 1000000 = 4000000
+counter:  1183755, so 2816245 updates lost (70%)
+took:     137 ms
+
+$ UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t pdsau race --step read-call-write --lock 2>/dev/null
+no GIL: this is the free-threaded build, so threads run Python code at the same time
+
+expected: 4 threads × 1000000 = 4000000
+counter:  4000000, so 0 updates lost (0%)
+took:     577 ms
+```
+
+- With the GIL, `+=` lost nothing. Without it, threads really run at the same time, and most updates vanish.
+- The lock still fixes it, at a cost in time.
 
 ## Layout
 
