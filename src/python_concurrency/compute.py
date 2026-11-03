@@ -8,7 +8,7 @@ moment. Each item's time on the clock stretches, while its CPU time stays the sa
 import logging
 import time
 
-from python_data_structures_and_utilities.language.concurrency.timeline import Span, who
+from python_concurrency.timeline import Span, who
 
 log = logging.getLogger(__name__)
 

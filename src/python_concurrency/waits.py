@@ -9,8 +9,8 @@ import logging
 import time
 from urllib.request import urlopen
 
-from python_data_structures_and_utilities.language.concurrency.server import url
-from python_data_structures_and_utilities.language.concurrency.timeline import Span, who
+from python_concurrency.server import url
+from python_concurrency.timeline import Span, who
 
 log = logging.getLogger(__name__)
 

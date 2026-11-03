@@ -1,7 +1,8 @@
-# python-data-structures-and-utilities
+# python-concurrency
 
-How Python runs your code, built up one concept per pull request. Each concept is a small runnable command with
-a test. Its output shows what the concept does: which thread, process or task did the work, and how long it took.
+How Python does more than one thing at a time: threads, processes and asyncio, built up one concept per pull
+request. Each concept is a small runnable command with a test. Its output shows what the concept does: which
+thread, process or task did the work, and how long it took.
 
 ## Run it
 
@@ -10,23 +11,23 @@ Needs [uv](https://docs.astral.sh/uv/). It installs Python 3.14 if you don't hav
 ```console
 uv sync
 uv run pytest
-uv run pdsau --help
+uv run concurrency --help
 ```
 
 To run any command or the tests on the free-threaded build, with no GIL:
 
 ```console
 UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t pytest
-UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t pdsau compute --way threads
+UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t concurrency compute --way threads
 ```
 
 ## Waiting, one request at a time
 
-`pdsau waits` starts a slow web server inside the program. Each answer takes 200 ms. Then it sends requests one
+`concurrency waits` starts a slow web server inside the program. Each answer takes 200 ms. Then it sends requests one
 after another: 8 by default, 3 here.
 
 ```console
-$ uv run pdsau waits --n 3
+$ uv run concurrency waits --n 3
    52.1ms  MainThread  slow server on port 61240; every answer waits 200 ms
    52.3ms  MainThread  threads running: MainThread, server
    52.4ms  MainThread  item 0: request sent, waiting for the answer
@@ -70,7 +71,7 @@ Try `--n` and `--wait-ms` to change n and t.
 next request as soon as it is free.
 
 ```console
-$ uv run pdsau waits --way threads --n 4 --workers 2
+$ uv run concurrency waits --way threads --n 4 --workers 2
    23.3ms  MainThread  slow server on port 61244; every answer waits 200 ms
    23.4ms  MainThread  threads running: MainThread, server
    23.5ms  worker_0    item 0: request sent, waiting for the answer
@@ -117,7 +118,7 @@ event loop, asyncio's scheduler, runs another task until the socket is ready. `-
 of requests in flight.
 
 ```console
-$ uv run pdsau waits --way asyncio --n 4 --workers 2
+$ uv run concurrency waits --way asyncio --n 4 --workers 2
   141.6ms  MainThread  None    slow server on port 64188; every answer waits 200 ms
   141.7ms  MainThread  None    threads running: MainThread, server
   142.4ms  server      None    connection accepted; starting a new thread to handle it
@@ -165,7 +166,7 @@ model: ⌈n/N⌉ × t = ⌈4/2⌉ × 200 = 2 × 200 = 400 ms
 may be in flight, yet they go one at a time.
 
 ```console
-$ uv run pdsau waits --way asyncio-blocking --n 3 --workers 3
+$ uv run concurrency waits --way asyncio-blocking --n 3 --workers 3
    64.4ms  MainThread  None    slow server on port 64747; every answer waits 200 ms
    64.6ms  MainThread  None    threads running: MainThread, server
    64.9ms  MainThread  item-0  item 0: request sent, waiting for the answer
@@ -201,7 +202,7 @@ The fix is `await asyncio.to_thread(fetch, port, item)`. It hands the blocking c
 pool, `asyncio_0` and up, and the task awaits that thread:
 
 ```console
-$ uv run pdsau waits --way asyncio-to-thread --n 3 --workers 3 2>/dev/null
+$ uv run concurrency waits --way asyncio-to-thread --n 3 --workers 3 2>/dev/null
 asyncio_0  |000000000000000000000000000000000000000000000000000000000···|
 asyncio_1  |11111111111111111111111111111111111111111111111111111111····|
 asyncio_2  |22222222222222222222222222222222222222222222222222222222····|
@@ -223,11 +224,11 @@ right. Each mark is the item that thread was waiting on, and `·` means the thre
 
 ## Computing, from several threads: the GIL
 
-`pdsau compute` runs a CPU-bound job: each item is a loop of plain Python arithmetic, about 100 ms, with no
+`concurrency compute` runs a CPU-bound job: each item is a loop of plain Python arithmetic, about 100 ms, with no
 waiting. Here 4 items run on 4 threads.
 
 ```console
-$ uv run pdsau compute --way threads --n 4 --workers 4
+$ uv run concurrency compute --way threads --n 4 --workers 4
    25.8ms  worker_0    item 0: computing
    32.2ms  worker_2    item 2: computing
    25.9ms  worker_1    item 1: computing
@@ -252,7 +253,7 @@ model: n × c = 4 × 97 = 387 ms. Only the thread that holds the GIL computes, s
 For comparison, one at a time:
 
 ```console
-$ uv run pdsau compute --n 4 2>/dev/null | tail -3
+$ uv run concurrency compute --n 4 2>/dev/null | tail -3
 4 items, one at a time: 400 ms
 c, one item's own CPU time, on average: 100 ms
 model: n × c = 4 × 100 = 398 ms
@@ -271,7 +272,7 @@ model: n × c = 4 × 100 = 398 ms
 interpreter, with its own memory and its own GIL.
 
 ```console
-$ uv run pdsau compute --way processes --n 8 --workers 4
+$ uv run concurrency compute --way processes --n 8 --workers 4
    49.6ms  MainProcess     MainThread  each item goes to a worker as 137 pickled bytes: the task by reference, and the item
    56.9ms  MainProcess     MainThread  pool made, with no processes yet; it starts one when an item arrives and no worker is free, up to 4
   154.0ms  SpawnProcess-1  MainThread  item 0: computing
@@ -316,11 +317,11 @@ model: S + ⌈n/N⌉ × c = 104 + ⌈8/4⌉ × 117 = 338 ms. Each process has it
 
 ## Errors through futures
 
-`pdsau futures` submits 6 requests to a pool of 3 threads, one by one, and collects the results as they finish.
+`concurrency futures` submits 6 requests to a pool of 3 threads, one by one, and collects the results as they finish.
 The server answers item 2 with an error, HTTP 500.
 
 ```console
-$ uv run pdsau futures
+$ uv run concurrency futures
    73.8ms  MainThread  slow server on port 50162; every answer waits 200 ms
    74.1ms  MainThread  threads running: MainThread, server
    74.2ms  worker_0    item 0: request sent, waiting for the answer
@@ -376,7 +377,7 @@ item 2 failed: <HTTPError 500: 'Internal Server Error'>
 run on 2 threads, with a timeout of 300 ms.
 
 ```console
-$ uv run pdsau futures --timeout-ms 300 --n 6 --workers 2
+$ uv run concurrency futures --timeout-ms 300 --n 6 --workers 2
    47.5ms  MainThread  slow server on port 50686; every answer waits 200 ms
    47.6ms  MainThread  threads running: MainThread, server
    47.7ms  worker_0    item 0: request sent, waiting for the answer
@@ -417,12 +418,12 @@ running at the timeout, finished anyway: [2, 3]
 
 ## A race: threads share one counter
 
-`pdsau race` starts 4 threads that each add 1 to one shared counter, a million times. Adding 1 is three steps:
+`concurrency race` starts 4 threads that each add 1 to one shared counter, a million times. Adding 1 is three steps:
 read the value, add 1, write it back. `--step read-call-write` calls a small function between the read and the
 write.
 
 ```console
-$ uv run pdsau race --step read-call-write
+$ uv run concurrency race --step read-call-write
    37.9ms  adder_0     adding 1, 1000000 times, to the counter object at 0x101b0d7f0
    38.1ms  adder_1     adding 1, 1000000 times, to the counter object at 0x101b0d7f0
    38.2ms  adder_2     adding 1, 1000000 times, to the counter object at 0x101b0d7f0
@@ -439,11 +440,11 @@ counter:  3035440, so 964560 updates lost (24%)
 The same race with `counter.value += 1`, and then with fewer additions:
 
 ```console
-$ uv run pdsau race 2>/dev/null
+$ uv run concurrency race 2>/dev/null
 expected: 4 threads × 1000000 = 4000000
 counter:  4000000, so 0 updates lost (0%)
 
-$ uv run pdsau race --step read-call-write --times 100000 2>/dev/null
+$ uv run concurrency race --step read-call-write --times 100000 2>/dev/null
 expected: 4 threads × 100000 = 400000
 counter:  400000, so 0 updates lost (0%)
 ```
@@ -463,7 +464,7 @@ counter:  400000, so 0 updates lost (0%)
 `--lock` holds one lock, shared by every thread, around the read, the call and the write together.
 
 ```console
-$ uv run pdsau race --step read-call-write --lock
+$ uv run concurrency race --step read-call-write --lock
    31.1ms  adder_0     adding 1, 1000000 times, to the counter object at 0x103a9d940, holding the lock at 0x103afca50
    31.2ms  adder_1     adding 1, 1000000 times, to the counter object at 0x103a9d940, holding the lock at 0x103afca50
    37.4ms  adder_2     adding 1, 1000000 times, to the counter object at 0x103a9d940, holding the lock at 0x103afca50
@@ -477,7 +478,7 @@ expected: 4 threads × 1000000 = 4000000
 counter:  4000000, so 0 updates lost (0%)
 took:     389 ms
 
-$ uv run pdsau race --step read-call-write 2>/dev/null
+$ uv run concurrency race --step read-call-write 2>/dev/null
 expected: 4 threads × 1000000 = 4000000
 counter:  2905257, so 1094743 updates lost (27%)
 took:     159 ms
@@ -496,7 +497,7 @@ Python 3.14 also comes as a free-threaded build, `python3.14t`, with no GIL. uv 
 second environment, `.venv-ft`, so the default `.venv` stays as it is. The same commands then run without a GIL.
 
 ```console
-$ UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t pdsau compute --way threads --n 4 --workers 4
+$ UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t concurrency compute --way threads --n 4 --workers 4
    42.1ms  worker_0    item 0: computing
    42.3ms  worker_1    item 1: computing
    42.4ms  worker_2    item 2: computing
@@ -526,14 +527,14 @@ model: ⌈n/min(N, cores)⌉ × c = ⌈4/4⌉ × 109 = 109 ms
 The race from above, with `counter.value += 1`, and then with the lock:
 
 ```console
-$ UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t pdsau race 2>/dev/null
+$ UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t concurrency race 2>/dev/null
 no GIL: this is the free-threaded build, so threads run Python code at the same time
 
 expected: 4 threads × 1000000 = 4000000
 counter:  1183755, so 2816245 updates lost (70%)
 took:     137 ms
 
-$ UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t pdsau race --step read-call-write --lock 2>/dev/null
+$ UV_PROJECT_ENVIRONMENT=.venv-ft uv run --python 3.14t concurrency race --step read-call-write --lock 2>/dev/null
 no GIL: this is the free-threaded build, so threads run Python code at the same time
 
 expected: 4 threads × 1000000 = 4000000
@@ -547,17 +548,15 @@ took:     577 ms
 ## Layout
 
 ```
-src/python_data_structures_and_utilities/
-  cli.py        the pdsau command: waits, compute, futures and race
-  language/     how Python runs your code
-    concurrency/
-      server.py   the slow local server
-      waits.py    one request to the server
-      async_waits.py  requests as asyncio tasks, on one thread; a blocking call, and its fix
-      compute.py  one CPU-bound item: plain Python arithmetic
-      futures.py  submit to a pool, collect results and errors; timeouts and cancel()
-      race.py     threads adding 1 to one shared counter, with or without a lock
-      ways.py     run n items one at a time, or from a pool of threads or processes
-      timeline.py one row per thread, for the timeline
-tests/          one behavior test per concept
+src/python_concurrency/
+  cli.py          the concurrency command: waits, compute, futures and race
+  server.py       the slow local server
+  waits.py        one request to the server
+  async_waits.py  requests as asyncio tasks, on one thread; a blocking call, and its fix
+  compute.py      one CPU-bound item: plain Python arithmetic
+  futures.py      submit to a pool, collect results and errors; timeouts and cancel()
+  race.py         threads adding 1 to one shared counter, with or without a lock
+  ways.py         run n items one at a time, or from a pool of threads or processes
+  timeline.py     one row per thread, for the timeline
+tests/            one behavior test per concept
 ```

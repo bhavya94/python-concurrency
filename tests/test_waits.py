@@ -1,8 +1,8 @@
 from functools import partial
 
-from python_data_structures_and_utilities.language.concurrency.server import SlowServer
-from python_data_structures_and_utilities.language.concurrency.waits import fetch
-from python_data_structures_and_utilities.language.concurrency.ways import one_at_a_time, with_threads
+from python_concurrency.server import SlowServer
+from python_concurrency.waits import fetch
+from python_concurrency.ways import one_at_a_time, with_threads
 
 WAIT = 0.05
 

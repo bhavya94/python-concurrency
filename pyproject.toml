@@ -1,14 +1,14 @@
 [project]
-name = "python-data-structures-and-utilities"
+name = "python-concurrency"
 version = "0.1.0"
-description = "How Python runs your code, built up one concept per pull request, each one runnable."
+description = "Threads, processes and asyncio in Python, built up one concept per pull request."
 readme = "README.md"
 authors = [{ name = "Bhavya Sharma" }]
 requires-python = ">=3.14"
 dependencies = []
 
 [project.scripts]
-pdsau = "python_data_structures_and_utilities.cli:main"
+concurrency = "python_concurrency.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]
