@@ -3,8 +3,8 @@ from functools import partial
 
 import pytest
 
-from python_data_structures_and_utilities.language.concurrency.compute import burn
-from python_data_structures_and_utilities.language.concurrency.ways import with_processes, with_threads
+from python_concurrency.compute import burn
+from python_concurrency.ways import with_processes, with_threads
 
 SIZE = 1_250_000  # about 50 ms per item. Smaller items can all run on the first thread before the others start.
 

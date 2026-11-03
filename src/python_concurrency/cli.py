@@ -1,4 +1,4 @@
-"""`pdsau`: the one command. Each concept the repo adds becomes a subcommand here."""
+"""`concurrency`: the one command. Each concept the repo adds becomes a subcommand here."""
 
 import argparse
 import logging
@@ -8,14 +8,14 @@ import sys
 import time
 from functools import partial
 
-from python_data_structures_and_utilities.language.concurrency.async_waits import with_asyncio
-from python_data_structures_and_utilities.language.concurrency.compute import burn
-from python_data_structures_and_utilities.language.concurrency.futures import collect, with_timeout
-from python_data_structures_and_utilities.language.concurrency.race import STEPS, race
-from python_data_structures_and_utilities.language.concurrency.server import SlowServer
-from python_data_structures_and_utilities.language.concurrency.timeline import render
-from python_data_structures_and_utilities.language.concurrency.waits import fetch
-from python_data_structures_and_utilities.language.concurrency.ways import one_at_a_time, with_processes, with_threads
+from python_concurrency.async_waits import with_asyncio
+from python_concurrency.compute import burn
+from python_concurrency.futures import collect, with_timeout
+from python_concurrency.race import STEPS, race
+from python_concurrency.server import SlowServer
+from python_concurrency.timeline import render
+from python_concurrency.waits import fetch
+from python_concurrency.ways import one_at_a_time, with_processes, with_threads
 
 # Each log line starts with the ms since the program started, then the thread that wrote it.
 LOG_FORMAT = "%(relativeCreated)7.1fms  %(threadName)-10s  %(message)s"
@@ -132,7 +132,7 @@ def _ways(parser: argparse.ArgumentParser, things: str, ways: tuple[str, ...] = 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="pdsau", description="Run one concept and watch what it does.")
+    parser = argparse.ArgumentParser(prog="concurrency", description="Run one concept and watch what it does.")
     concepts = parser.add_subparsers(dest="concept", title="concepts")
     waits = concepts.add_parser("waits", help="n requests to a slow local server")
     _ways(waits, "requests", ("one-at-a-time", "threads", *ASYNC_CALLS))

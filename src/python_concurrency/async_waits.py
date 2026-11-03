@@ -13,8 +13,8 @@ import asyncio
 import logging
 import time
 
-from python_data_structures_and_utilities.language.concurrency.timeline import Run, Span, who
-from python_data_structures_and_utilities.language.concurrency.waits import fetch
+from python_concurrency.timeline import Run, Span, who
+from python_concurrency.waits import fetch
 
 log = logging.getLogger(__name__)
 

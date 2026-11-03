@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
-from python_data_structures_and_utilities.language.concurrency.timeline import Run, Span
+from python_concurrency.timeline import Run, Span
 
 log = logging.getLogger(__name__)
 Task = Callable[[int], Span]

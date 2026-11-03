@@ -3,29 +3,29 @@ import subprocess
 import sys
 from pathlib import Path
 
-PDSAU = Path(sys.executable).parent / "pdsau"  # the script uv installs from [project.scripts]
+COMMAND = Path(sys.executable).parent / "concurrency"  # the script uv installs from [project.scripts]
 
 
 def test_the_installed_command_runs_and_explains_itself():
-    result = subprocess.run([PDSAU, "--help"], capture_output=True, text=True)
+    result = subprocess.run([COMMAND, "--help"], capture_output=True, text=True)
     assert result.returncode == 0
-    assert result.stdout.startswith("usage: pdsau")
+    assert result.stdout.startswith("usage: concurrency")
 
 
 def test_an_unknown_option_is_an_error():
-    result = subprocess.run([PDSAU, "--bogus"], capture_output=True, text=True)
+    result = subprocess.run([COMMAND, "--bogus"], capture_output=True, text=True)
     assert result.returncode == 2
     assert "unrecognized arguments: --bogus" in result.stderr
 
 
 def test_a_count_below_one_is_an_error():
-    result = subprocess.run([PDSAU, "waits", "--n", "0"], capture_output=True, text=True)
+    result = subprocess.run([COMMAND, "waits", "--n", "0"], capture_output=True, text=True)
     assert result.returncode == 2
     assert "must be 1 or more, not 0" in result.stderr
 
 
 def test_threads_way_overlaps_and_its_model_rounds_up():
-    result = subprocess.run([PDSAU, "waits", "--way", "threads", "--n", "3", "--workers", "2", "--wait-ms", "100"],
+    result = subprocess.run([COMMAND, "waits", "--way", "threads", "--n", "3", "--workers", "2", "--wait-ms", "100"],
                             capture_output=True, text=True)
     assert "⌈3/2⌉ × 100 = 2 × 100 = 200 ms" in result.stdout  # 3 requests on 2 threads need 2 rounds, not 1.5
     measured = int(re.search(r"2 threads: (\d+) ms", result.stdout).group(1))
@@ -33,7 +33,7 @@ def test_threads_way_overlaps_and_its_model_rounds_up():
 
 
 def test_compute_runs_its_items_on_the_threads_asked_for():
-    result = subprocess.run([PDSAU, "compute", "--way", "threads", "--n", "2", "--workers", "2", "--size", "1250000"],
+    result = subprocess.run([COMMAND, "compute", "--way", "threads", "--n", "2", "--workers", "2", "--size", "1250000"],
                             capture_output=True, text=True)
     rows = [line.split()[0] for line in result.stdout.splitlines() if "|" in line]
     assert sorted(rows) == ["worker_0", "worker_1"]
@@ -47,13 +47,13 @@ def test_compute_runs_its_items_on_the_threads_asked_for():
 
 
 def test_a_lock_needs_the_step_that_has_a_read_and_a_write():
-    result = subprocess.run([PDSAU, "race", "--lock"], capture_output=True, text=True)
+    result = subprocess.run([COMMAND, "race", "--lock"], capture_output=True, text=True)
     assert result.returncode == 2
     assert "--lock goes with --step read-call-write" in result.stderr
 
 
 def test_each_worker_process_logs_and_runs_its_items():
-    result = subprocess.run([PDSAU, "compute", "--way", "processes", "--n", "2", "--workers", "2", "--size", "1250000"],
+    result = subprocess.run([COMMAND, "compute", "--way", "processes", "--n", "2", "--workers", "2", "--size", "1250000"],
                             capture_output=True, text=True)
     rows = [line.split()[0] for line in result.stdout.splitlines() if "|" in line]
     assert rows and all(row.startswith("SpawnProcess-") for row in rows)
@@ -61,7 +61,7 @@ def test_each_worker_process_logs_and_runs_its_items():
 
 
 def test_asyncio_way_runs_one_task_per_request_and_overlaps_them():
-    result = subprocess.run([PDSAU, "waits", "--way", "asyncio", "--n", "3", "--workers", "3", "--wait-ms", "100"],
+    result = subprocess.run([COMMAND, "waits", "--way", "asyncio", "--n", "3", "--workers", "3", "--wait-ms", "100"],
                             capture_output=True, text=True)
     rows = sorted(line.split()[0] for line in result.stdout.splitlines() if "|" in line)
     assert rows == ["item-0", "item-1", "item-2"]
@@ -70,14 +70,14 @@ def test_asyncio_way_runs_one_task_per_request_and_overlaps_them():
 
 
 def test_asyncio_blocking_way_sends_one_request_at_a_time():
-    result = subprocess.run([PDSAU, "waits", "--way", "asyncio-blocking", "--n", "3", "--workers", "3",
+    result = subprocess.run([COMMAND, "waits", "--way", "asyncio-blocking", "--n", "3", "--workers", "3",
                              "--wait-ms", "100"], capture_output=True, text=True)
     measured = int(re.search(r"asyncio-blocking: (\d+) ms", result.stdout).group(1))
     assert measured >= 300  # n × t, though 3 requests were allowed in flight
 
 
 def test_asyncio_to_thread_way_runs_the_requests_on_pool_threads_at_once():
-    result = subprocess.run([PDSAU, "waits", "--way", "asyncio-to-thread", "--n", "3", "--workers", "3",
+    result = subprocess.run([COMMAND, "waits", "--way", "asyncio-to-thread", "--n", "3", "--workers", "3",
                              "--wait-ms", "100"], capture_output=True, text=True)
     rows = [line.split()[0] for line in result.stdout.splitlines() if "|" in line]
     assert rows and all(row.startswith("asyncio_") for row in rows)
@@ -86,14 +86,14 @@ def test_asyncio_to_thread_way_runs_the_requests_on_pool_threads_at_once():
 
 
 def test_futures_reports_the_items_that_worked_and_each_error():
-    result = subprocess.run([PDSAU, "futures", "--n", "3", "--workers", "3", "--wait-ms", "50", "--fail", "1"],
+    result = subprocess.run([COMMAND, "futures", "--n", "3", "--workers", "3", "--wait-ms", "50", "--fail", "1"],
                             capture_output=True, text=True)
     assert "2 items worked: [0, 2]" in result.stdout
     assert "item 1 failed: <HTTPError 500" in result.stdout
 
 
 def test_futures_with_a_timeout_reports_what_it_cancelled_and_what_finished_anyway():
-    result = subprocess.run([PDSAU, "futures", "--n", "6", "--workers", "2", "--timeout-ms", "300"],
+    result = subprocess.run([COMMAND, "futures", "--n", "6", "--workers", "2", "--timeout-ms", "300"],
                             capture_output=True, text=True)
     assert "done before the timeout: [0, 1]" in result.stdout
     assert "cancelled while queued:  [4, 5]" in result.stdout

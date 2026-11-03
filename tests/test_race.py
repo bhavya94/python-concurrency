@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from python_data_structures_and_utilities.language.concurrency.race import race
+from python_concurrency.race import race
 
 # A thread is asked to hand the GIL over every 5 ms, and only some hand-overs fall between a read and its write.
 # At 500,000 additions per thread, 6 runs in 40 lost nothing. At 2,000,000, every one of 30 runs lost updates.

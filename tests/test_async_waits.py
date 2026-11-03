@@ -1,5 +1,5 @@
-from python_data_structures_and_utilities.language.concurrency.async_waits import with_asyncio
-from python_data_structures_and_utilities.language.concurrency.server import SlowServer
+from python_concurrency.async_waits import with_asyncio
+from python_concurrency.server import SlowServer
 
 WAIT = 0.1
 

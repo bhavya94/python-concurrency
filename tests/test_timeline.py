@@ -1,4 +1,4 @@
-from python_data_structures_and_utilities.language.concurrency.timeline import Run, Span, render
+from python_concurrency.timeline import Run, Span, render
 
 
 def test_each_item_sits_under_its_thread_at_its_time():

@@ -1,7 +1,7 @@
 from urllib.error import HTTPError
 
-from python_data_structures_and_utilities.language.concurrency.futures import collect, with_timeout
-from python_data_structures_and_utilities.language.concurrency.server import SlowServer
+from python_concurrency.futures import collect, with_timeout
+from python_concurrency.server import SlowServer
 
 
 def test_a_workers_error_surfaces_where_the_results_are_collected():

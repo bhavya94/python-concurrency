@@ -15,8 +15,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
-from python_data_structures_and_utilities.language.concurrency.timeline import Span
-from python_data_structures_and_utilities.language.concurrency.waits import fetch
+from python_concurrency.timeline import Span
+from python_concurrency.waits import fetch
 
 log = logging.getLogger(__name__)
 
