@@ -16,3 +16,7 @@ def test_a_call_between_the_read_and_the_write_loses_updates():
 @pytest.mark.skipif(not sys._is_gil_enabled(), reason="with no GIL, += loses updates too")
 def test_plus_equals_loses_nothing_with_the_gil_on_this_interpreter():
     assert race(4, TIMES, "plus-equals") == 4 * TIMES  # CPython 3.14's luck, not a promise
+
+
+def test_one_shared_lock_around_the_read_call_and_write_loses_nothing():
+    assert race(4, TIMES, "read-call-write", lock=True) == 4 * TIMES

@@ -200,6 +200,38 @@ counter:  400000, so 0 updates lost (0%)
 - With 100,000 additions, each thread finishes within about 5 ms, before it is ever asked to hand the GIL over.
   The threads never interleave, so nothing is lost even with the call.
 
+## The fix: one shared lock
+
+`--lock` holds one lock, shared by every thread, around the read, the call and the write together.
+
+```console
+$ uv run pdsau race --step read-call-write --lock
+   31.1ms  adder_0     adding 1, 1000000 times, to the counter object at 0x103a9d940, holding the lock at 0x103afca50
+   31.2ms  adder_1     adding 1, 1000000 times, to the counter object at 0x103a9d940, holding the lock at 0x103afca50
+   37.4ms  adder_2     adding 1, 1000000 times, to the counter object at 0x103a9d940, holding the lock at 0x103afca50
+   48.8ms  adder_3     adding 1, 1000000 times, to the counter object at 0x103a9d940, holding the lock at 0x103afca50
+  311.4ms  adder_0     done after 280 ms
+  393.8ms  adder_1     done after 363 ms
+  411.6ms  adder_2     done after 374 ms
+  420.2ms  adder_3     done after 371 ms
+
+expected: 4 threads × 1000000 = 4000000
+counter:  4000000, so 0 updates lost (0%)
+took:     389 ms
+
+$ uv run pdsau race --step read-call-write 2>/dev/null
+expected: 4 threads × 1000000 = 4000000
+counter:  2905257, so 1094743 updates lost (27%)
+took:     159 ms
+```
+
+- Every thread logs the same lock address: there is one lock, and all the threads share it.
+- A thread that reaches `with lock:` while another holds the lock waits there. So no thread can run between
+  another thread's read and its write, and nothing is lost.
+- The lock costs time: every one of the 4 million additions now takes and releases it.
+- The lock must cover the whole read, call and write. A lock around only the write still loses updates, and so
+  does one lock per thread.
+
 ## Layout
 
 ```
@@ -210,7 +242,7 @@ src/python_data_structures_and_utilities/
       server.py   the slow local server
       waits.py    one request to the server
       compute.py  one CPU-bound item: plain Python arithmetic
-      race.py     threads adding 1 to one shared counter
+      race.py     threads adding 1 to one shared counter, with or without a lock
       ways.py     run n items one at a time, or from a pool of threads
       timeline.py one row per thread, for the timeline
 tests/          one behavior test per concept

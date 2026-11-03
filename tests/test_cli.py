@@ -41,3 +41,9 @@ def test_compute_runs_its_items_on_the_threads_asked_for():
     model = int(re.search(r"model: n × c = 2 × \d+ = (\d+) ms", result.stdout).group(1))
     if sys._is_gil_enabled():
         assert measured / model > 0.7  # with the GIL, threads take turns: the run lasts at least about n × c
+
+
+def test_a_lock_needs_the_step_that_has_a_read_and_a_write():
+    result = subprocess.run([PDSAU, "race", "--lock"], capture_output=True, text=True)
+    assert result.returncode == 2
+    assert "--lock goes with --step read-call-write" in result.stderr
