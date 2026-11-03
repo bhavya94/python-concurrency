@@ -23,6 +23,10 @@ PROCESS_LOG_FORMAT = "%(relativeCreated)7.1fms  %(processName)-15s %(threadName)
 TASK_LOG_FORMAT = "%(relativeCreated)7.1fms  %(threadName)-10s  %(taskName)-6s  %(message)s"
 
 
+# Which call each asyncio way makes inside its tasks.
+ASYNC_CALLS = {"asyncio": "await", "asyncio-blocking": "blocking", "asyncio-to-thread": "to-thread"}
+
+
 def _log_like_the_parent(start: float) -> None:
     """Runs first in each worker process, which starts with no logging set up. `relativeCreated` counts from the
     moment the logging module loaded, which in a worker is later than in the parent. Giving the worker the
@@ -48,18 +52,21 @@ def _run(args: argparse.Namespace, task):
 def _waits(args: argparse.Namespace) -> None:
     n, t, workers = args.n, args.wait_ms, args.workers
     with SlowServer(delay=t / 1000) as server:
-        if args.way == "asyncio":
-            run = with_asyncio(server.port, n, workers)
+        if args.way.startswith("asyncio"):
+            run = with_asyncio(server.port, n, workers, ASYNC_CALLS[args.way])
         else:
             run = _run(args, partial(fetch, server.port))
     print("\n" + render(run))
-    if args.way in ("threads", "asyncio"):
+    if args.way in ("threads", "asyncio", "asyncio-to-thread"):
         rounds = math.ceil(n / workers)
-        who = f"{workers} threads" if args.way == "threads" else f"asyncio, {workers} tasks in flight, one thread"
+        who = {"threads": f"{workers} threads",
+               "asyncio": f"asyncio, {workers} tasks in flight, one thread",
+               "asyncio-to-thread": f"asyncio-to-thread, {workers} tasks in flight, each request on a pool thread"
+               }[args.way]
         print(f"\n{n} requests, {who}: {run.ms:.0f} ms")
         print(f"model: ⌈n/N⌉ × t = ⌈{n}/{workers}⌉ × {t} = {rounds} × {t} = {rounds * t} ms")
     else:
-        print(f"\n{n} requests, one at a time: {run.ms:.0f} ms")
+        print(f"\n{n} requests, {'one at a time' if args.way == 'one-at-a-time' else args.way}: {run.ms:.0f} ms")
         print(f"model: n × t = {n} × {t} = {n * t} ms")
 
 
@@ -103,7 +110,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="pdsau", description="Run one concept and watch what it does.")
     concepts = parser.add_subparsers(dest="concept", title="concepts")
     waits = concepts.add_parser("waits", help="n requests to a slow local server")
-    _ways(waits, "requests", ("one-at-a-time", "threads", "asyncio"))
+    _ways(waits, "requests", ("one-at-a-time", "threads", *ASYNC_CALLS))
     waits.add_argument("--wait-ms", type=_at_least(0), default=200, help="how long each answer waits (default 200)")
     waits.set_defaults(run=_waits)
     compute = concepts.add_parser("compute", help="n CPU-bound items of plain Python arithmetic")
@@ -125,6 +132,6 @@ def main() -> None:
     if args.concept is None:
         parser.print_help()
         return
-    formats = {"processes": PROCESS_LOG_FORMAT, "asyncio": TASK_LOG_FORMAT}
+    formats = {"processes": PROCESS_LOG_FORMAT} | dict.fromkeys(ASYNC_CALLS, TASK_LOG_FORMAT)
     logging.basicConfig(level=logging.INFO, format=formats.get(getattr(args, "way", ""), LOG_FORMAT))
     args.run(args)

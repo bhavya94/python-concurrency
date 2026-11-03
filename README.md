@@ -152,6 +152,58 @@ model: ⌈n/N⌉ × t = ⌈4/2⌉ × 200 = 2 × 200 = 400 ms
   tasks 0 and 1 finish.
 - The timeline has one row per task. The model is the same as for threads, ⌈n / N⌉ × t, but with one thread.
 
+## The asyncio mistake: a blocking call inside a task
+
+`--way asyncio-blocking` makes each task call the blocking `fetch` from step 2, with no `await`. Three requests
+may be in flight, yet they go one at a time.
+
+```console
+$ uv run pdsau waits --way asyncio-blocking --n 3 --workers 3
+   64.4ms  MainThread  None    slow server on port 64747; every answer waits 200 ms
+   64.6ms  MainThread  None    threads running: MainThread, server
+   64.9ms  MainThread  item-0  item 0: request sent, waiting for the answer
+   76.7ms  server      None    connection accepted; starting a new thread to handle it
+   76.9ms  handler-0   None    received /item/0; sleeping 200 ms
+  282.0ms  handler-0   None    answering /item/0
+  284.5ms  MainThread  item-0  item 0: answered after 220 ms, using 7.8 ms of this thread's CPU
+  285.1ms  MainThread  item-1  item 1: request sent, waiting for the answer
+  293.7ms  server      None    connection accepted; starting a new thread to handle it
+  294.6ms  handler-1   None    received /item/1; sleeping 200 ms
+  499.8ms  handler-1   None    answering /item/1
+  501.1ms  MainThread  item-1  item 1: answered after 216 ms, using 1.7 ms of this thread's CPU
+  501.3ms  MainThread  item-2  item 2: request sent, waiting for the answer
+  502.5ms  server      None    connection accepted; starting a new thread to handle it
+  503.1ms  handler-2   None    received /item/2; sleeping 200 ms
+  704.6ms  handler-2   None    answering /item/2
+  708.9ms  MainThread  item-2  item 2: answered after 208 ms, using 1.4 ms of this thread's CPU
+
+item-0  |00000000000000000000········································|
+item-1  |····················11111111111111111111····················|
+item-2  |········································2222222222222222222·|
+         0 ms                                                  647 ms
+
+3 requests, asyncio-blocking: 647 ms
+model: n × t = 3 × 200 = 600 ms
+```
+
+- Each request still runs inside a task, `item-0` to `item-2`. But `urlopen` blocks the thread, and the event
+  loop runs on that same thread. The loop can't switch tasks until the call returns.
+- So the total is back to n × t, as one at a time.
+
+The fix is `await asyncio.to_thread(fetch, port, item)`. It hands the blocking call to a thread from the loop's
+pool, `asyncio_0` and up, and the task awaits that thread:
+
+```console
+$ uv run pdsau waits --way asyncio-to-thread --n 3 --workers 3 2>/dev/null
+asyncio_0  |000000000000000000000000000000000000000000000000000000000···|
+asyncio_1  |11111111111111111111111111111111111111111111111111111111····|
+asyncio_2  |22222222222222222222222222222222222222222222222222222222····|
+            0 ms                                                  233 ms
+
+3 requests, asyncio-to-thread, 3 tasks in flight, each request on a pool thread: 233 ms
+model: ⌈n/N⌉ × t = ⌈3/3⌉ × 200 = 1 × 200 = 200 ms
+```
+
 ## The timeline
 
 Under the log, each run draws a timeline: one row per thread that sent requests, with time running left to
@@ -339,7 +391,7 @@ src/python_data_structures_and_utilities/
     concurrency/
       server.py   the slow local server
       waits.py    one request to the server
-      async_waits.py  requests as asyncio tasks, on one thread
+      async_waits.py  requests as asyncio tasks, on one thread; a blocking call, and its fix
       compute.py  one CPU-bound item: plain Python arithmetic
       race.py     threads adding 1 to one shared counter, with or without a lock
       ways.py     run n items one at a time, or from a pool of threads or processes
