@@ -13,12 +13,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Span:
-    """One item: which thread ran it, and when it started and ended, in seconds on the wall clock."""
+    """One item: which thread ran it, when it started and ended on the wall clock, and the CPU time that thread
+    spent on it. All in seconds."""
 
     item: int
     thread: str
     start: float
     end: float
+    cpu: float = 0.0
 
 
 @dataclass(frozen=True)

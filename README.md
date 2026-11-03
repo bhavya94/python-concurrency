@@ -113,15 +113,60 @@ right. Each mark is the item that thread was waiting on, and `·` means the thre
   time.
 - Count the rounds: with ⌈n / N⌉ = 2, each row holds two items.
 
+## Computing, from several threads: the GIL
+
+`pdsau compute` runs a CPU-bound job: each item is a loop of plain Python arithmetic, about 100 ms, with no
+waiting. Here 4 items run on 4 threads.
+
+```console
+$ uv run pdsau compute --way threads --n 4 --workers 4
+   25.8ms  worker_0    item 0: computing
+   32.2ms  worker_2    item 2: computing
+   25.9ms  worker_1    item 1: computing
+   51.1ms  worker_3    item 3: computing
+   69.8ms  MainThread  threads running: MainThread, worker_0, worker_1, worker_2, worker_3
+  304.4ms  worker_0    item 0: done after 279 ms, using 97 ms of this thread's CPU
+  401.3ms  worker_3    item 3: done after 350 ms, using 96 ms of this thread's CPU
+  410.6ms  worker_1    item 1: done after 385 ms, using 97 ms of this thread's CPU
+  412.7ms  worker_2    item 2: done after 380 ms, using 96 ms of this thread's CPU
+
+worker_0  |0000000000000000000000000000000000000000000·················|
+worker_1  |11111111111111111111111111111111111111111111111111111111111·|
+worker_2  |·2222222222222222222222222222222222222222222222222222222222·|
+worker_3  |···3333333333333333333333333333333333333333333333333333333··|
+           0 ms                                                  387 ms
+
+4 items, 4 threads: 387 ms
+c, one item's own CPU time, on average: 97 ms
+model: n × c = 4 × 97 = 387 ms. Only the thread that holds the GIL computes, so threads take turns.
+```
+
+For comparison, one at a time:
+
+```console
+$ uv run pdsau compute --n 4 2>/dev/null | tail -3
+4 items, one at a time: 400 ms
+c, one item's own CPU time, on average: 100 ms
+model: n × c = 4 × 100 = 398 ms
+```
+
+- Each item uses about 97 ms of its thread's CPU, but takes 280 to 385 ms on the clock. It spends most of that
+  time waiting for its turn.
+- Only the thread that holds the GIL runs Python code. A computing thread never blocks, so the interpreter makes
+  it hand the GIL over every 5 ms (`sys.getswitchinterval()`), and the 4 threads take turns.
+- The timeline shows four busy rows, but they take turns rather than compute at once.
+- So the total is about n × c, the same as one at a time. Threads overlap waiting, not Python computing.
+
 ## Layout
 
 ```
 src/python_data_structures_and_utilities/
-  cli.py        the pdsau command; each concept adds a subcommand
+  cli.py        the pdsau command: waits and compute
   language/     how Python runs your code
     concurrency/
       server.py   the slow local server
       waits.py    one request to the server
+      compute.py  one CPU-bound item: plain Python arithmetic
       ways.py     run n items one at a time, or from a pool of threads
       timeline.py one row per thread, for the timeline
 tests/          one behavior test per concept

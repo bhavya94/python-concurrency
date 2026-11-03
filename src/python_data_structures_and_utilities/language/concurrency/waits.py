@@ -23,7 +23,7 @@ def fetch(port: int, item: int) -> Span:
     log.info("item %d: request sent, waiting for the answer", item)
     with urlopen(url(port, item)) as answer:
         answer.read()
-    end = time.time()
+    end, used = time.time(), time.thread_time() - cpu
     log.info("item %d: answered after %.0f ms, using %.1f ms of this thread's CPU", item, (end - start) * 1000,
-             (time.thread_time() - cpu) * 1000)
-    return Span(item, threading.current_thread().name, start, end)
+             used * 1000)
+    return Span(item, threading.current_thread().name, start, end, used)
