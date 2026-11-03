@@ -157,16 +157,60 @@ model: n × c = 4 × 100 = 398 ms
 - The timeline shows four busy rows, but they take turns rather than compute at once.
 - So the total is about n × c, the same as one at a time. Threads overlap waiting, not Python computing.
 
+## A race: threads share one counter
+
+`pdsau race` starts 4 threads that each add 1 to one shared counter, a million times. Adding 1 is three steps:
+read the value, add 1, write it back. `--step read-call-write` calls a small function between the read and the
+write.
+
+```console
+$ uv run pdsau race --step read-call-write
+   37.9ms  adder_0     adding 1, 1000000 times, to the counter object at 0x101b0d7f0
+   38.1ms  adder_1     adding 1, 1000000 times, to the counter object at 0x101b0d7f0
+   38.2ms  adder_2     adding 1, 1000000 times, to the counter object at 0x101b0d7f0
+   49.6ms  adder_3     adding 1, 1000000 times, to the counter object at 0x101b0d7f0
+  128.5ms  adder_0     done after 91 ms
+  173.7ms  adder_2     done after 136 ms
+  189.8ms  adder_1     done after 152 ms
+  197.7ms  adder_3     done after 148 ms
+
+expected: 4 threads × 1000000 = 4000000
+counter:  3035440, so 964560 updates lost (24%)
+```
+
+The same race with `counter.value += 1`, and then with fewer additions:
+
+```console
+$ uv run pdsau race 2>/dev/null
+expected: 4 threads × 1000000 = 4000000
+counter:  4000000, so 0 updates lost (0%)
+
+$ uv run pdsau race --step read-call-write --times 100000 2>/dev/null
+expected: 4 threads × 100000 = 400000
+counter:  400000, so 0 updates lost (0%)
+```
+
+- Every thread logs the same address: there is one counter object, in memory that all the threads share.
+- An update is lost when another thread runs between one thread's read and its write. The first thread then
+  writes back an out-of-date value.
+- With the GIL, CPython lets another thread run only at certain points in the bytecode, such as the start of a
+  function call. The call puts such a point between the read and the write, so updates go missing.
+- `counter.value += 1` has no such point inside it, so on CPython 3.14 it lost nothing. That is luck of the
+  interpreter, not a promise.
+- With 100,000 additions, each thread finishes within about 5 ms, before it is ever asked to hand the GIL over.
+  The threads never interleave, so nothing is lost even with the call.
+
 ## Layout
 
 ```
 src/python_data_structures_and_utilities/
-  cli.py        the pdsau command: waits and compute
+  cli.py        the pdsau command: waits, compute and race
   language/     how Python runs your code
     concurrency/
       server.py   the slow local server
       waits.py    one request to the server
       compute.py  one CPU-bound item: plain Python arithmetic
+      race.py     threads adding 1 to one shared counter
       ways.py     run n items one at a time, or from a pool of threads
       timeline.py one row per thread, for the timeline
 tests/          one behavior test per concept

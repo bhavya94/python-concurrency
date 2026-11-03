@@ -6,6 +6,7 @@ import math
 from functools import partial
 
 from python_data_structures_and_utilities.language.concurrency.compute import burn
+from python_data_structures_and_utilities.language.concurrency.race import STEPS, race
 from python_data_structures_and_utilities.language.concurrency.server import SlowServer
 from python_data_structures_and_utilities.language.concurrency.timeline import render
 from python_data_structures_and_utilities.language.concurrency.waits import fetch
@@ -52,6 +53,13 @@ def _compute(args: argparse.Namespace) -> None:
           (". Only the thread that holds the GIL computes, so threads take turns." if args.way == "threads" else ""))
 
 
+def _race(args: argparse.Namespace) -> None:
+    expected = args.threads * args.times
+    got = race(args.threads, args.times, args.step)
+    print(f"\nexpected: {args.threads} threads × {args.times} = {expected}")
+    print(f"counter:  {got}, so {expected - got} updates lost ({(expected - got) / expected:.0%})")
+
+
 def _ways(parser: argparse.ArgumentParser, things: str) -> None:
     parser.add_argument("--way", choices=("one-at-a-time", "threads"), default="one-at-a-time",
                         help="one at a time, or from a pool of threads (default one-at-a-time)")
@@ -71,6 +79,12 @@ def main() -> None:
     compute.add_argument("--size", type=_at_least(1), default=2_500_000,
                          help="loop steps per item; 2,500,000 is about 100 ms on an M1 Mac (default)")
     compute.set_defaults(run=_compute)
+    racer = concepts.add_parser("race", help="threads add 1 to one shared counter; count the lost updates")
+    racer.add_argument("--threads", type=_at_least(1), default=4, help="how many threads (default 4)")
+    racer.add_argument("--times", type=_at_least(1), default=1_000_000, help="additions per thread (default 1000000)")
+    racer.add_argument("--step", choices=STEPS, default="plus-equals",
+                       help="counter.value += 1, or read, call a function, write (default plus-equals)")
+    racer.set_defaults(run=_race)
     args = parser.parse_args()
     if args.concept is None:
         parser.print_help()
